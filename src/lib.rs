@@ -12,7 +12,11 @@ pub mod resource;
 pub mod download;
 pub mod global;
 
-pub fn read_input_file<'a, P: AsRef<Path>>(file_path: P, client: &'a Client) -> io::Result<Resources<'a>> {
+// Client is cloned throughout the codebase because it uses Arc
+// internally. Cloning does not allocate and is the intended way
+// to reuse Client.
+
+pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> io::Result<Resources> {
     let pixiv_regex = Regex::new(r"^https:\/\/www\.pixiv\.net\/artworks\/(\d+)\/?$").unwrap();
 
     let file = GeneralOpen.open(file_path)?;
@@ -46,7 +50,7 @@ pub fn read_input_file<'a, P: AsRef<Path>>(file_path: P, client: &'a Client) -> 
                 origin: Box::from(origin),
                 id,
                 options: tokens,
-                client,
+                client: client.clone(),
                 metadata: None,
             }));
         } else {
@@ -114,7 +118,7 @@ pub async fn run<P: AsRef<Path>>(file_path: P) -> anyhow::Result<()> {
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0")
         .build()?;
 
-    let mut resources = read_input_file(&file_path, &client)?;
+    let mut resources = read_input_file(&file_path, client.clone())?;
 
     if resources.is_empty() {
         println!("No resources are loaded. Open {:?} and put in the resources!", file_path.as_ref());

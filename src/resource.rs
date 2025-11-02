@@ -37,8 +37,8 @@ impl From<serde_json::Error> for PixivError {
     }
 }
 
-pub enum Resource<'a> {
-    Pixiv(PixivResource<'a>),
+pub enum Resource {
+    Pixiv(PixivResource),
     Unknown(UnknownResource),
 }
 
@@ -55,18 +55,18 @@ pub struct PixivMetadata {
 
 /// origin is the exact line that create the resource from the input file.
 /// id is illustration id
-pub struct PixivResource<'a> {
+pub struct PixivResource {
     pub(crate) origin: Box<str>,
     pub(crate) id: Box<str>,
     pub(crate) options: Vec<Box<str>>,
-    pub(crate) client: &'a Client,
+    pub(crate) client: Client,
     
     // This should be None when initialized since all the metadata
     // are supposed to be polluted from [download].
     pub(crate) metadata: Option<PixivMetadata>,
 }
 
-impl<'a> PixivResource<'a> {
+impl<'a> PixivResource {
     pub fn origin(&self) -> &str{
         &self.origin
     }
@@ -276,7 +276,7 @@ impl<'a> PixivResource<'a> {
         dst.pop();
         dst.push(format!("{}{}", self.id, ext));
 
-        download::Builder::new(self.client, video_archive_url, &dst)
+        download::Builder::new(self.client.clone(), video_archive_url, &dst)
             .headers(headers)
             .download()
             .await?;
@@ -313,7 +313,7 @@ impl<'a> PixivResource<'a> {
         let mut headers = HeaderMap::with_capacity(1);
         headers.append("Referer", "https://www.pixiv.net".parse().unwrap());
 
-        download::Builder::new(self.client, url, &dst)
+        download::Builder::new(self.client.clone(), url, &dst)
             .headers(headers)
             .download()
             .await?;
@@ -341,4 +341,4 @@ impl UnknownResource {
     }
 }
 
-pub type Resources<'a> = Vec<Resource<'a>>;
+pub type Resources = Vec<Resource>;

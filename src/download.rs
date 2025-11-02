@@ -12,14 +12,14 @@ pub enum Error {
 }
 
 /// Download blob with configuration
-pub struct Builder<'c, 'p> {
+pub struct Builder<'p> {
     url: Url,
-    client: &'c Client,
+    client: Client,
     dst: &'p Path,
     headers: Option<HeaderMap>
 }
 
-impl<'c, 'p> Builder<'c, 'p> {
+impl<'p> Builder<'p> {
     /// Write a remote blob from the network into the disk
     /// 
     /// Return the number of written byte on success. Otherwise 
@@ -60,7 +60,7 @@ impl<'c, 'p> Builder<'c, 'p> {
         self
     }
 
-    pub fn new<P: AsRef<Path>>(client: &'c Client, url: Url, dst: &'p P) -> Self {
+    pub fn new<P: AsRef<Path>>(client: Client, url: Url, dst: &'p P) -> Self {
         Builder { 
             url, 
             client, 

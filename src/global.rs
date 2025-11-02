@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use std::path::{PathBuf};
 use std::env;
 
-/// Global state that should be precomputed once on main and pass around the codebase.
+/// Global state that should be precomputed once on main() and pass around the codebase.
 /// Fields are private and remain immutable.
 pub struct Global {
     current_directory: PathBuf,
