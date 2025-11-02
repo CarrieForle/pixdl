@@ -66,7 +66,7 @@ pub struct PixivResource {
     pub(crate) metadata: Option<PixivMetadata>,
 }
 
-impl<'a> PixivResource {
+impl PixivResource {
     pub fn origin(&self) -> &str{
         &self.origin
     }

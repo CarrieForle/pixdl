@@ -10,7 +10,7 @@ async fn main() -> Result<()> {
     }
 
     let global = global()?;
-    const FILE_NAME: &'static str = "write.txt";
+    const FILE_NAME: &str = "write.txt";
 
     if parse_cmd_argument()? {
         print_help(&global, FILE_NAME);
