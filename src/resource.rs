@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{self, BufWriter}, iter, ops::Deref, path::PathBuf};
+use std::{fs::{self, File}, io::{self, BufWriter}, iter, ops::Deref, path::PathBuf, sync::Arc};
 use regex::Regex;
 use reqwest::{Client, IntoUrl, Url, header::HeaderMap};
 use anyhow::{Context, anyhow};
@@ -57,7 +57,7 @@ pub struct PixivMetadata {
 /// id is illustration id
 pub struct PixivResource {
     pub(crate) origin: Box<str>,
-    pub(crate) id: Box<str>,
+    pub(crate) id: Arc<str>,
     pub(crate) options: Vec<Box<str>>,
     pub(crate) client: Client,
     
@@ -78,20 +78,30 @@ impl<'a> PixivResource {
     /// 
     /// Note invalid subresources denoted by options would not cause Ok(false).
     pub async fn download(&mut self) -> Result<Option<Vec<usize>>, PixivError> {
-        let url = format!("https://www.pixiv.net/ajax/illust/{}", self.id);
-        let detail = self.client.get(url)
-            .header("Referer", "https://www.pixiv.net/")
-            .send().await?
-            .error_for_status()?
-            .json::<serde_json::Value>().await?;
-        
-        let url = format!("https://www.pixiv.net/ajax/illust/{}/pages", self.id);
-        let pictures = self.client.get(url)
-            .header("Referer", "https://www.pixiv.net/")
-            .send().await?
-            .error_for_status()?
-            .json::<serde_json::Value>().await?;
+        let client = self.client.clone();
+        let id = self.id.clone();
+        let detail_task = tokio::spawn(async move {
+            let url = format!("https://www.pixiv.net/ajax/illust/{}", id);
+            client.get(url)
+                .header("Referer", "https://www.pixiv.net/")
+                .send().await?
+                .error_for_status()?
+                .json::<serde_json::Value>().await
+        });
 
+        let client = self.client.clone();
+        let id = self.id.clone();
+        let pictures_task = tokio::spawn(async move {
+            let url = format!("https://www.pixiv.net/ajax/illust/{}/pages", id.clone());
+            client.clone().get(url)
+                .header("Referer", "https://www.pixiv.net/")
+                .send().await?
+                .error_for_status()?
+                .json::<serde_json::Value>().await
+        });
+
+        let detail = detail_task.await.unwrap()?;
+        let pictures = pictures_task.await.unwrap()?;
         let detail = &detail["body"];
         let title = detail["title"].as_str().ok_or(PixivError::JsonTraversal)?;
         let artist = detail["userName"].as_str().ok_or(PixivError::JsonTraversal)?;

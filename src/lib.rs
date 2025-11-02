@@ -4,6 +4,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, ErrorKind, Write};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use colored::Colorize;
 use crate::resource::*;
@@ -42,7 +43,7 @@ pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> io::Resu
         let captures = pixiv_regex.captures(&link);
 
         if let Some(caps) = captures {
-            let id = Box::from(&caps[1]);
+            let id = Arc::from(&caps[1]);
             let tokens = tokens.into_iter()
                 .collect();
 
