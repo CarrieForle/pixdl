@@ -1,11 +1,13 @@
 use regex::Regex;
 use reqwest::{Client, ClientBuilder};
+use tokio::time::sleep;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, ErrorKind, Write};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc::{self};
 use colored::Colorize;
 use crate::resource::*;
 
@@ -25,7 +27,7 @@ pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> io::Resu
     let mut resources = Resources::default();
 
     for origin in reader.lines() {
-        let origin = origin?;
+        let origin: Box<str> = Box::from(origin?);
 
         if origin.trim().is_empty() {
             continue;
@@ -48,7 +50,7 @@ pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> io::Resu
                 .collect();
 
             resources.push(Resource::Pixiv(PixivResource {
-                origin: Box::from(origin),
+                origin,
                 id,
                 options: tokens,
                 client: client.clone(),
@@ -119,7 +121,7 @@ pub async fn run<P: AsRef<Path>>(file_path: P) -> anyhow::Result<()> {
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0")
         .build()?;
 
-    let mut resources = read_input_file(&file_path, client.clone())?;
+    let resources = read_input_file(&file_path, client.clone())?;
 
     if resources.is_empty() {
         println!("No resources are loaded. Open {:?} and put in the resources!", file_path.as_ref());
@@ -133,50 +135,66 @@ pub async fn run<P: AsRef<Path>>(file_path: P) -> anyhow::Result<()> {
 
         return Ok(());
     }
-
+    
+    println!("Loaded {} resources.", resources.len());
     let mut failed_resources  = Vec::new();
+    let (sender, mut receiver) = mpsc::channel(32);
 
-    println!("Loaded {} resources.", resources.len());   
+    for (i, res) in resources.into_iter().enumerate() {
+        // Do we need this delay (429 error)?
+        let delay = Duration::from_millis(i as u64 * 500);
+        let sender = sender.clone();
 
-    for res in &mut resources {
-        match res {
-            Resource::Pixiv(pixiv) => {
-                match pixiv.download().await {
-                    Err(e) => {
-                        let context = format!("[Pixiv ({})] Failed", pixiv.id);
-                        println!("{}", format!("{:#}", anyhow::Error::from(e).context(context)).red());
-                        failed_resources.push(pixiv.origin());
-                    }
-                    Ok(Some(failed_subresources)) => {
-                        let sub_id_sequence = failed_subresources.into_iter()
-                            .map(|v| v.to_string())
-                            .collect::<Box<[String]>>()
-                            .join(", ");
+        tokio::spawn(async move {
+            sleep(delay).await;
+            match res {
+                Resource::Pixiv(mut pixiv) => {
+                    match pixiv.download().await {
+                        Err(e) => {
+                            let context = format!("[Pixiv ({})] Failed", pixiv.id);
+                            println!("{}", format!("{:#}", anyhow::Error::from(e).context(context)).red());
+                            let origin = pixiv.origin;
+                            sender.send(origin).await.unwrap();
+                        }
+                        Ok(Some(failed_subresources)) => {
+                            let sub_id_sequence = failed_subresources.into_iter()
+                                .map(|v| v.to_string())
+                                .collect::<Box<[String]>>()
+                                .join(", ");
 
-                        let title = &pixiv.metadata.as_ref().unwrap().title;
+                            let title = &pixiv.metadata.as_ref().unwrap().title;
 
-                        println!("[Pixiv {title} (ID: {id}, Sub ID: {sub_id})] {status}", 
-                            id=pixiv.id, 
-                            sub_id=sub_id_sequence, 
-                            status="Failed".red()
-                        );
-                        failed_resources.push(pixiv.origin());
-                    }
-                    Ok(None) => {
-                        let title = &pixiv.metadata.as_ref().unwrap().title;
+                            println!("[Pixiv {title} (ID: {id}, Sub ID: {sub_id})] {status}", 
+                                id=pixiv.id, 
+                                sub_id=sub_id_sequence, 
+                                status="Failed".red()
+                            );
+                            let origin = pixiv.origin;
+                            sender.send(origin).await.unwrap();
+                        }
+                        Ok(None) => {
+                            let title = &pixiv.metadata.as_ref().unwrap().title;
 
-                        println!("[Pixiv {title} ({id})] {status}", 
-                            id=pixiv.id, 
-                            status="Succeeded".green()
-                        );
+                            println!("[Pixiv {title} ({id})] {status}", 
+                                id=pixiv.id, 
+                                status="Succeeded".green()
+                            );
+                        }
                     }
                 }
+                Resource::Unknown(unknown) => {
+                    let origin = unknown.origin;
+                    println!("[Unknown ({})] Skipped", origin);
+                    sender.send(origin).await.unwrap();
+                }
             }
-            Resource::Unknown(unknown) => {
-                println!("[Unknown ({})] Skipped", unknown.origin());
-                failed_resources.push(unknown.origin());
-            }
-        }
+        });
+    }
+
+    drop(sender);
+
+    while let Some(resource_origin) = receiver.recv().await {
+        failed_resources.push(resource_origin);
     }
 
     if failed_resources.is_empty() {

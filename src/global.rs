@@ -4,6 +4,7 @@ use std::env;
 
 /// Global state that should be precomputed once on main() and pass around the codebase.
 /// Fields are private and remain immutable.
+#[derive(Debug)]
 pub struct Global {
     current_directory: PathBuf,
     executable_name: String,

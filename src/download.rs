@@ -12,6 +12,7 @@ pub enum Error {
 }
 
 /// Download blob with configuration
+#[derive(Debug)]
 pub struct Builder<'p> {
     url: Url,
     client: Client,
