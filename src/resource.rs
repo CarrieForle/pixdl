@@ -38,22 +38,66 @@ impl From<serde_json::Error> for PixivError {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub struct ParseError(#[from] anyhow::Error);
+
+#[derive(Debug, Clone)]
 pub enum Resource {
     Pixiv(PixivResource),
     Unknown(UnknownResource),
 }
 
+impl Resource {
+    pub fn parse(client: Client, origin: &str) -> Result<Self, ParseError>  {
+        if origin.trim().is_empty() {
+            Err(anyhow!("origin is empty"))?
+        }
+
+        let pixiv_regex = Regex::new(r"^https:\/\/www\.pixiv\.net\/artworks\/(\d+)\/?$").unwrap();
+        let origin: Box<str> = Box::from(origin);
+
+        let mut tokens: Vec<_> = origin.split_whitespace()
+            .map(Box::from)
+            .collect();
+
+        if tokens.is_empty() {
+            Err(anyhow!("origin is empty"))?
+        }
+
+        let link = tokens.drain(..1).next().unwrap();
+        let captures = pixiv_regex.captures(&link);
+
+        if let Some(caps) = captures {
+            let id = Arc::from(&caps[1]);
+            let tokens = tokens.into_iter()
+                .collect();
+
+            Ok(Resource::Pixiv(PixivResource {
+                origin,
+                id,
+                options: tokens,
+                client,
+                metadata: None,
+            }))
+        } else {
+            Ok(Resource::Unknown(origin.into()))
+        }
+    }
+}
+
+pub type Resources = Vec<Resource>;
+
 // I'm seriously not sure if it's worth it to use Box<str>. But I
 // am not going to mutate any of these. It's wrong to mutate 
 // this data structure. It might make sense that some of these
 // are absense which in case I would make it Option instead.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PixivMetadata {
     pub artist: Box<str>,
     pub title: Box<str>,
     pub link: Box<str>,
 }
-
 
 #[derive(Debug)]
 struct PixivDownloadResource {
@@ -111,7 +155,7 @@ impl PixivDownloadResource {
 
 /// origin is the exact line that create the resource from the input file.
 /// id is illustration id
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PixivResource {
     pub(crate) origin: Box<str>,
     pub(crate) id: Arc<str>,
@@ -366,7 +410,7 @@ impl PixivResource {
 /// Unidentified resource from the user. It does not support
 /// download and is skipped upon encounter. This kind of resources
 /// remain at input file after program terminates.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnknownResource {
     pub(crate) origin: Box<str>,
 }
@@ -382,5 +426,3 @@ impl UnknownResource {
         &self.origin
     }
 }
-
-pub type Resources = Vec<Resource>;

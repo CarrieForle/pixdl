@@ -1,9 +1,9 @@
 use regex::Regex;
-use reqwest::{Client, ClientBuilder};
+use reqwest::Client;
 use tokio::time::sleep;
 use std::env;
 use std::fs::File;
-use std::io::{self, BufRead, BufWriter, ErrorKind, Write};
+use std::io::{self, BufRead, BufWriter, ErrorKind, Write, stdin};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,11 +14,11 @@ use crate::resource::*;
 pub mod resource;
 pub mod download;
 pub mod global;
+pub mod command_line;
 
 // Client is cloned throughout the codebase because it uses Arc
 // internally. Cloning does not allocate and is the intended way
 // to reuse Client.
-
 pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> io::Result<Resources> {
     let pixiv_regex = Regex::new(r"^https:\/\/www\.pixiv\.net\/artworks\/(\d+)\/?$").unwrap();
 
@@ -113,30 +113,30 @@ impl DefaultOpen for GeneralOpen {
     }
 }
 
-pub async fn run<P: AsRef<Path>>(file_path: P) -> anyhow::Result<()> {
-    let client = ClientBuilder::new()
-        .gzip(true)
-        .read_timeout(Duration::from_secs(2))
-        .connect_timeout(Duration::from_secs(3))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0")
-        .build()?;
+pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resources: Resources) -> anyhow::Result<()> {
+    let (resources, is_interactive) = if arg_resources.is_empty() {
+        let res = read_input_file(&input_file_path, client.clone())?;
 
-    let resources = read_input_file(&file_path, client.clone())?;
+        if res.is_empty() {
+            println!("No resources are loaded. Open {:?} and put in the resources!", input_file_path.as_ref());
 
-    if resources.is_empty() {
-        println!("No resources are loaded. Open {:?} and put in the resources!", file_path.as_ref());
+            let current_exe = env::current_exe()?;
+            let binary_name = current_exe.file_name()
+                .map(|f| f.to_str().unwrap_or("pxdlp"))
+                .unwrap();
 
-        let current_exe = env::current_exe()?;
-        let binary_name = current_exe.file_name()
-            .map(|f| f.to_str().unwrap_or("pxdlp"))
-            .unwrap();
+            println!("See program usage with \"{} -h\".", binary_name);
 
-        println!("See program usage with \"{} -h\".", binary_name);
-
-        return Ok(());
-    }
+            return Ok(());
+        }
     
-    println!("Loaded {} resources.", resources.len());
+        println!("Loaded {} resources from {:?}", res.len(), input_file_path.as_ref());
+        (res, true)
+    } else {
+        println!("Loaded {} resources from command line arguments", arg_resources.len());
+        (arg_resources, false)
+    };
+
     let mut failed_resources  = Vec::new();
     let (sender, mut receiver) = mpsc::channel(32);
 
@@ -200,12 +200,18 @@ pub async fn run<P: AsRef<Path>>(file_path: P) -> anyhow::Result<()> {
     if failed_resources.is_empty() {
         println!("{}", "All resources have been successfully downloaded!".green());
     } else {
-        let filename = file_path.as_ref().file_name().unwrap();
+        let filename = input_file_path.as_ref().file_name().unwrap();
         println!("{}", format!("Some resources are failed to download or skipped which remains in {:?}.", filename).yellow())
     }
 
-    let mut input_file = BufWriter::new(File::create(&file_path)?);
+    let mut input_file = BufWriter::new(File::create(&input_file_path)?);
     input_file.write_all(failed_resources.join("\n").as_bytes())?;
+
+    if is_interactive {
+        println!("Press enter to terminate the program.");
+        let mut input = String::new();
+        stdin().read_line(&mut input)?;
+    }
 
     Ok(())
 }

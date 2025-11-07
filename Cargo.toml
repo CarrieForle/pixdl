@@ -1,10 +1,11 @@
 [package]
 name = "pixdl"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+clap = { version = "4.5.51", features = ["cargo"] }
 colored = "3.0.0"
 futures-util = "0.3.31"
 regex = "1.12.2"
