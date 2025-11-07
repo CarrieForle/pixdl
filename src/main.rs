@@ -12,9 +12,9 @@ async fn main() -> Result<()> {
         colored::control::set_virtual_terminal(true).unwrap();
     }
 
+    // TODO: Signal handle to cancel all ongoing downloads
     let client = ClientBuilder::new()
         .gzip(true)
-        .read_timeout(Duration::from_secs(2))
         .connect_timeout(Duration::from_secs(3))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0")
         .build()?;
