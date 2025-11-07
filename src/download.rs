@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{BufWriter, Write}, path::Path};
+use std::{fs::{self, File, remove_dir_all, remove_file}, io::{BufWriter, Write}, path::Path};
 use futures_util::StreamExt;
 use reqwest::{Client, Url, header::HeaderMap};
 
@@ -46,14 +46,46 @@ impl<'p> Builder<'p> {
                 .open(self.dst)?
         );
         let mut byte_count: u64 = 0;
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
+        
+        while let Some(res) = stream.next().await {
+            let chunk;
+            (chunk, file) = Self::delete_file_on_error(res, file, self.dst)?;
             byte_count += chunk.len() as u64;
-            file.write_all(&chunk)?;
+            (_, file) = Self::delete_file_on_error(
+                file.write_all(&chunk),
+                file,
+                self.dst
+            )?;
         }
 
         Ok(byte_count)
+    }
+
+    // Close file and delete file/directory on removal.
+    // `file` and `dst` MUST be the same location in the filesystem.
+    fn delete_file_on_error<T, F: Write, E: Into<Error>>(
+        result: Result<T, E>,
+        file: BufWriter<F>, 
+        dst: &Path, 
+    ) -> Result<(T, BufWriter<F>), Error> 
+    {
+        match result {
+            Err(err) => {
+                drop(file);
+                if dst.is_file() {
+                    remove_file(dst)?;
+                // TODO: could dst be neither a file or directory? 
+                // The else assume it's a directory.
+                } else {
+                    remove_dir_all(dst)?;
+                }
+
+                Err(err.into())
+            }
+            Ok(res) => {
+                Ok((res, file))
+            }
+        }
     }
 
     pub fn headers(mut self, headers: HeaderMap) -> Self {
