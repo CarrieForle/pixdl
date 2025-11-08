@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{self, BufWriter}, ops::Deref, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, fs::{self, File}, io::{self, BufWriter}, ops::Deref, path::PathBuf, sync::Arc};
 use regex::Regex;
 use reqwest::{Client, IntoUrl, Url, header::HeaderMap};
 use anyhow::{Context, anyhow};
@@ -226,73 +226,64 @@ impl PixivResource {
         let pictures = pictures["body"].as_array()
             .ok_or(PixivError::JsonTraversal)?;
 
-        // The parsing index starts from 1. Need to convert to zero here.
-        let download_indexes: Vec<usize> = match self.options.len() {
+        // The parsing index starts from 1.
+        // Need to convert to start from 0 for accessing resources.
+        let mut too_high_indexes: Vec<&str> = Vec::new();
+        let download_indexes = match self.options.len() {
             0 => (0..pictures.len()).collect(),
-            1 => {
-                let range_regex = Regex::new(r"(\d){1,3}\.\.(\d){1,3}").unwrap();
-
-                if let Some(caps) = range_regex.captures(&self.options[0]) {
-                    let mut start = caps[1].parse().unwrap();
-                    let mut end = caps[2].parse().unwrap();
-
-                    if end < start || start == 0 {
-                        Err(PixivError::Option).context("Invalid range")?
-                    }
-
-                    if end > pictures.len() {
-                        println!("[Pixiv ({})] Ending range is too large ({}). Adjusted to the the end of illustration ({})", self.id, end,  pictures.len());
-
-                        end = pictures.len();
-                    }
-                    
-                    start -= 1;
-                    end -= 1;
-
-                    (start..=end).collect()
-                } else {
-                    let index: usize = self.options[0]
-                        .parse()
-                        .or(Err(PixivError::Option)).context("Not a number")?;
-
-                    if index == 0 || index > pictures.len() {
-                        Err(PixivError::Option).context("Index out of bound")?
-                    }
-
-                    vec![index - 1]
-                }
-            }
             _ => {
-                let mut too_high_indexes: Vec<&str> = Vec::new();
-                let mut indexes = Vec::new();
+                let range_regex = Regex::new(r"(\d){1,3}\.\.(\d){1,3}").unwrap();
+                let mut indexes = HashSet::new();
 
-                for i in &self.options {
-                    let index: usize = i.parse()
-                        .or(Err(PixivError::Option)).context("Not a number")?;
+                for option in &self.options {
+                    if let Some(caps) = range_regex.captures(option) {
+                        let mut start = caps[1].parse().unwrap();
+                        let mut end = caps[2].parse().unwrap();
+    
+                        if end < start || start == 0 {
+                            Err(PixivError::Option).context("Invalid range")?
+                        }
+    
+                        if end > pictures.len() {
+                            println!("[Pixiv ({})] Ending range is too large ({}). Adjusted to the the end of illustration ({})", self.id, end, pictures.len());
+    
+                            end = pictures.len();
+                        }
+                        
+                        start -= 1;
+                        end -= 1;
+    
+                        indexes = indexes.into_iter()
+                            .chain(start..=end)
+                            .collect();
+                    } else {
+                        let index: usize = option.parse()
+                            .or(Err(PixivError::Option))
+                            .context(format!("\"{option}\" is not a number"))?;
 
-                    if index == 0 {
-                        Err(PixivError::Option).context("Number must be positive")?
+                        if index == 0 {
+                            Err(PixivError::Option)
+                            .context("Number must be positive. Found 0.")?
+                        }
+
+                        if index > pictures.len() {
+                            too_high_indexes.push(option);
+                            continue;
+                        }
+
+                        indexes.insert(index - 1);
                     }
-
-                    if index > pictures.len() {
-                        too_high_indexes.push(i);
-
-                        continue;
-                    }
-
-                    indexes.push(index - 1);
-                }
-
-                if !too_high_indexes.is_empty() {
-                    let sequence = too_high_indexes.join(", ");
-                    let sequence = sequence.trim();
-
-                    println!("{}", format!("[Pixiv ({})] Skipped indexes ({sequence}) due to they exceed the number of illustration.", self.id).yellow());
                 }
 
                 indexes
             }
         };
+
+        if !too_high_indexes.is_empty() {
+            let sequence = too_high_indexes.join(", ");
+            let sequence = sequence.trim();
+            println!("{}", format!("[Pixiv ({})] Skipped indexes ({sequence}) due to exceeding the number of illustration.", self.id).yellow());
+        }
 
         if pictures.len() <= 1 {
             let url = pictures[0].pointer("/urls/original")
@@ -326,7 +317,9 @@ impl PixivResource {
                 let sender = sender.clone();
                 
                 tokio::spawn(async move {
-                    if let Err(e) = pixiv_downloader.write_pic_link_to_disk(url, true).await {
+                    if let Err(e) = pixiv_downloader
+                        .write_pic_link_to_disk(url, true).await 
+                    {
                         let context = format!("Failed to download Pixiv illustration (ID: {}, Index: {})", id, i + 1);
                         let error = anyhow::Error::from(e).context(context);
                         println!("{}", format!("{:#}", error).red());
