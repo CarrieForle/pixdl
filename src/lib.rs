@@ -201,11 +201,15 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
         println!("{}", "All resources have been successfully downloaded!".green());
     } else {
         let filename = input_file_path.as_ref().file_name().unwrap();
-        println!("{}", format!("Some resources are failed to download or skipped which remains in {:?}.", filename).yellow())
-    }
+        println!("{}", format!("Some resources are failed to download or skipped which remains in {:?}.", filename).yellow());
 
-    let mut input_file = BufWriter::new(File::create(&input_file_path)?);
-    input_file.write_all(failed_resources.join("\n").as_bytes())?;
+        let mut input_file = BufWriter::new(File::create(&input_file_path)?);
+        input_file.write_all(failed_resources.join("\n").as_bytes())?;
+
+        // Manual flush so it's not blocked by stdin
+        // This could probably be solved with async IO by using task?
+        input_file.flush()?;
+    }
 
     if is_interactive {
         println!("Press enter to terminate the program.");
