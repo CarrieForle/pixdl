@@ -34,7 +34,7 @@ pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> anyhow::
     Ok(resources)
 }
 
-pub trait DefaultOpen {
+trait DefaultOpen {
     fn default_text(&self) -> &'static str;
 
     fn open<P: AsRef<Path>>(&self, file_path: P) -> io::Result<File> {
