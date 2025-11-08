@@ -123,8 +123,7 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
                         Err(e) => {
                             let context = format!("[Pixiv ({})] Failed", pixiv.id);
                             println!("{}", format!("{:#}", anyhow::Error::from(e).context(context)).red());
-                            let origin = pixiv.origin;
-                            sender.send(origin).await.unwrap();
+                            sender.send(pixiv.origin).await.unwrap();
                         }
                         Ok(Some(failed_subresources)) => {
                             let sub_id_sequence = failed_subresources.into_iter()
@@ -139,8 +138,7 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
                                 sub_id=sub_id_sequence, 
                                 status="Failed".red()
                             );
-                            let origin = pixiv.origin;
-                            sender.send(origin).await.unwrap();
+                            sender.send(pixiv.origin).await.unwrap();
                         }
                         Ok(None) => {
                             let title = &pixiv.metadata.as_ref().unwrap().title;
@@ -153,9 +151,8 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
                     }
                 }
                 Resource::Unknown(unknown) => {
-                    let origin = unknown.origin;
-                    println!("[Unknown ({})] Skipped", origin);
-                    sender.send(origin).await.unwrap();
+                    println!("[Unknown ({})] Skipped", unknown.origin);
+                    sender.send(unknown.origin).await.unwrap();
                 }
             }
         });
@@ -169,9 +166,8 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
 
     if failed_resources.is_empty() {
         println!("{}", "All resources have been successfully downloaded!".green());
-    } else {
-        let filename = input_file_path.as_ref().file_name().unwrap();
-        println!("{}", format!("Some resources are failed to download or skipped which remains in {:?}.", filename).yellow());
+    } else if is_interactive {
+        println!("{}", format!("Some resources are failed to download or skipped which remains in {:?}.", input_file_path.as_ref()).yellow());
 
         let mut input_file = BufWriter::new(File::create(&input_file_path)?);
         input_file.write_all(failed_resources.join("\n").as_bytes())?;
@@ -179,6 +175,9 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
         // Manual flush so it's not blocked by stdin
         // This could probably be solved with async IO by using task?
         input_file.flush()?;
+    } else {
+        let sequence = failed_resources.join("\n");
+        println!("{}", format!("The following resources failed to download:\n{sequence}").yellow());
     }
 
     if is_interactive {
