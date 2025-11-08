@@ -232,7 +232,7 @@ impl PixivResource {
         let download_indexes = match self.options.len() {
             0 => (0..pictures.len()).collect(),
             _ => {
-                let range_regex = Regex::new(r"(\d){1,3}\.\.(\d){1,3}").unwrap();
+                let range_regex = Regex::new(r"(\d{1,3})\.\.(\d{1,3})").unwrap();
                 let mut indexes = HashSet::new();
 
                 for option in &self.options {
