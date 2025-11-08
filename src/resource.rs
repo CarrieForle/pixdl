@@ -115,7 +115,7 @@ impl From<&PixivResource> for PixivDownloadResource {
 }
 
 impl PixivDownloadResource {
-    /// Use is_subresource if there are multiple artwork.
+    /// is_subresource is true if there are multiple artwork.
     async fn write_pic_link_to_disk<U>(&self, url: U, is_subresource: bool) -> Result<(), PixivError> 
     where 
         U: IntoUrl, 
@@ -354,6 +354,7 @@ impl PixivResource {
     /// Video is Ugoira(動圖) which a zip archive of frames.
     /// It either returns Ok(None) or Err(PixivError) because it's
     /// assumed there will only be one video per resource.
+    /// 
     /// The return type is made compatible to `download`.
     async fn download_video(&self) -> Result<Option<Vec<usize>>, PixivError> {
         let url = format!("https://www.pixiv.net/ajax/illust/{}/ugoira_meta", self.id);
