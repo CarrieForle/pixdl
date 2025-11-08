@@ -340,6 +340,8 @@ impl PixivResource {
             while let Some(sub_id) = receiver.recv().await {
                 failed_subresources.push(sub_id);
             }
+
+            failed_subresources.sort();
         
             Ok(if failed_subresources.is_empty() {
                 None
