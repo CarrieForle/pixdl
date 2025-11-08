@@ -1,11 +1,9 @@
-use regex::Regex;
 use reqwest::Client;
 use tokio::time::sleep;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, ErrorKind, Write, stdin};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{self};
 use colored::Colorize;
@@ -19,46 +17,18 @@ pub mod command_line;
 // Client is cloned throughout the codebase because it uses Arc
 // internally. Cloning does not allocate and is the intended way
 // to reuse Client.
-pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> io::Result<Resources> {
-    let pixiv_regex = Regex::new(r"^https:\/\/www\.pixiv\.net\/artworks\/(\d+)\/?$").unwrap();
-
+pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> anyhow::Result<Resources> {
     let file = GeneralOpen.open(file_path)?;
     let reader = io::BufReader::new(file);
     let mut resources = Resources::default();
 
     for origin in reader.lines() {
-        let origin: Box<str> = Box::from(origin?);
-
+        let origin = origin?;
         if origin.trim().is_empty() {
             continue;
         }
 
-        let mut tokens: Vec<_> = origin.split_whitespace()
-            .map(Box::from)
-            .collect();
-
-        if tokens.is_empty() {
-            continue;
-        }
-
-        let link = tokens.drain(..1).next().unwrap();
-        let captures = pixiv_regex.captures(&link);
-
-        if let Some(caps) = captures {
-            let id = Arc::from(&caps[1]);
-            let tokens = tokens.into_iter()
-                .collect();
-
-            resources.push(Resource::Pixiv(PixivResource {
-                origin,
-                id,
-                options: tokens,
-                client: client.clone(),
-                metadata: None,
-            }));
-        } else {
-            resources.push(Resource::Unknown(origin.into()));
-        }
+        resources.push(Resource::parse(client.clone(), &origin)?);
     }
 
     Ok(resources)

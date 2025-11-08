@@ -49,7 +49,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub fn parse(client: Client, origin: &str) -> Result<Self, ParseError>  {
+    pub fn parse(client: Client, origin: &str) -> Result<Self, ParseError> {
         if origin.trim().is_empty() {
             Err(anyhow!("origin is empty"))?
         }
@@ -60,10 +60,6 @@ impl Resource {
         let mut tokens: Vec<_> = origin.split_whitespace()
             .map(Box::from)
             .collect();
-
-        if tokens.is_empty() {
-            Err(anyhow!("origin is empty"))?
-        }
 
         let link = tokens.drain(..1).next().unwrap();
         let captures = pixiv_regex.captures(&link);
