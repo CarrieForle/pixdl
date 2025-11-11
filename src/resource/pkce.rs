@@ -1,5 +1,4 @@
 // RFC7636: https://datatracker.ietf.org/doc/html/rfc7636
-// A PKCE implementation for pixiv_login which is now unused.
 
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};

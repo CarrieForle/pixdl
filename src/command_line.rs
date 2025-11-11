@@ -1,6 +1,5 @@
 use clap::{ArgMatches, arg, command};
 use reqwest::Client;
-
 use crate::resource::{Resource, Resources};
 
 fn parser(client: Client, arg: &str) -> anyhow::Result<Resources> {
