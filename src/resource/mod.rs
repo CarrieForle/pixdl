@@ -19,12 +19,12 @@ pub enum Resource {
 
 impl Resource {
     pub fn parse(client: Client, origin: &str) -> Result<Self, ParseError> {
-        if origin.trim().is_empty() {
+        let origin = origin.trim();
+        if origin.is_empty() {
             Err(anyhow!("origin is empty"))?
         }
 
         let pixiv_regex = Regex::new(r"^https:\/\/www\.pixiv\.net\/artworks\/(\d+)\/?$").unwrap();
-        let origin: Box<str> = Box::from(origin);
 
         let mut tokens: Vec<_> = origin.split_whitespace()
             .map(Box::from)
@@ -32,6 +32,7 @@ impl Resource {
 
         let link = tokens.drain(..1).next().unwrap();
         let captures = pixiv_regex.captures(&link);
+        let origin: Box<str> = Box::from(origin);
 
         if let Some(caps) = captures {
             let id = Arc::from(&caps[1]);
