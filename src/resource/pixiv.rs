@@ -434,17 +434,17 @@ impl PixivResource {
         });
 
         let metadata = self.metadata.as_ref().unwrap();
-        let tags = detail.pointer("/tags/tags").ok_or(PixivError::JsonTraversal)?
-        .as_array()
-        .ok_or(PixivError::JsonTraversal)?;
 
-        // if find "動圖" in tag. Use a different download method.
-        for tag in tags {
-            let tag = tag["tag"].as_str().ok_or(PixivError::JsonTraversal)?;
-
-            if tag == "動圖" {
+        // if find "ugoira" in filename. Use a different download method.
+        if detail.pointer("/urls/original")
+            .ok_or(PixivError::JsonTraversal)?
+            .as_str()
+            .ok_or(PixivError::JsonTraversal)?
+            // The url is supposed to have the pattern:
+            // https://i.pximg.net/img-original/img/{date}/{random}/{id}_ugoira0.{ext}
+            .contains("ugoira")
+        {
                 return self.download_video().await;
-            }
         }
 
         let mut pictures = {
