@@ -3,7 +3,7 @@
 // Pixiv uses OAuth but it's only used internally (i.e., phone app).
 use std::{collections::HashSet, fs::{self, File}, io::{self, BufWriter, BufReader, Write, stdin, stdout}, mem, ops::Deref, path::{Path, PathBuf}, sync::Arc};
 use regex::Regex;
-use reqwest::{Client, IntoUrl, Url, Request, Response, header::HeaderMap};
+use reqwest::{Client, IntoUrl, Request, Response, Url, header::{self, HeaderMap, HeaderValue}};
 use anyhow::{Context, anyhow};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
@@ -87,7 +87,6 @@ impl PixivUser {
         let detail: serde_json::Value = {
             let url = "https://app-api.pixiv.net/v1/illust/detail";
             let request = self.client.get(url)
-                .bearer_auth(self.credential.access_token.clone())
                 .query(&[("illust_id", id)])
                 .header("User-Agent", "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)")
                 .header("App-Os", "ios")
@@ -203,8 +202,7 @@ impl PixivUser {
             .expect("Failed to get localtime");
         headers.insert("x-client-time", localtime.parse().unwrap());
 
-        let mut buf = [0u8; 25];
-        let hash = base16ct::lower::encode_str(&Md5::digest(format!("{}{}", localtime, HASH_SECRET)), &mut buf).unwrap();
+        let hash = base16ct::lower::encode_string(&Md5::digest(format!("{}{}", localtime, HASH_SECRET)));
 
         headers.insert("x-client-hash", hash.parse().unwrap());
         headers.insert("App-Os", "ios".parse().unwrap());
@@ -243,11 +241,16 @@ impl PixivUser {
         Ok(())
     }
 
+    /// request_builder do not have to be called with bearer_auth
     async fn retry_if_unauthorized(&mut self, request: Request) -> Result<Response, LoginError> {
+        let mut header_value: HeaderValue = format!("Bearer {}", self.credential.access_token).parse().unwrap();
+        header_value.set_sensitive(true);
+        let mut first_request = request.try_clone().unwrap();
+        first_request.headers_mut().insert(header::AUTHORIZATION, header_value);
         // Panic if request body is stream which 
         // shouldn't be possible as stream feature 
         // is not opted in.
-        match self.client.execute(request.try_clone().unwrap())
+        match self.client.execute(first_request)
             // This is not part of the retry condition as it's
             // a network error rather than unauthorized access.
             .await?
@@ -256,7 +259,15 @@ impl PixivUser {
             Ok(val) => Ok(val),
             Err(_) => {
                 self.refresh_or_login().await?;
-                Ok(self.client.execute(request).await?)
+                let mut header_value: HeaderValue = format!("Bearer {}", self.credential.access_token).parse().unwrap();
+                header_value.set_sensitive(true);
+                let mut second_request = request;
+                second_request.headers_mut().insert(header::AUTHORIZATION, header_value);
+                Ok(
+                    self.client.execute(second_request)
+                    .await?
+                    .error_for_status()?
+                )
             }
         }
     }
