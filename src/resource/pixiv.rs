@@ -88,9 +88,10 @@ impl PixivUser {
             let url = "https://app-api.pixiv.net/v1/illust/detail";
             let request = self.client.get(url)
                 .query(&[("illust_id", id)])
-                .header("User-Agent", "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)")
-                .header("App-Os", "ios")
-                .header("App-Os-Version", "14.6")
+                .header(header::USER_AGENT, "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)")
+                .header(header::HOST, "app-api.pixiv.net")
+                .header("app-os", "ios")
+                .header("app-os-Version", "14.6")
                 .build()?;
 
             self.retry_if_unauthorized(request).await?.json().await?
@@ -205,10 +206,10 @@ impl PixivUser {
         let hash = base16ct::lower::encode_string(&Md5::digest(format!("{}{}", localtime, HASH_SECRET)));
 
         headers.insert("x-client-hash", hash.parse().unwrap());
-        headers.insert("App-Os", "ios".parse().unwrap());
-        headers.insert("App-Os-Version", "14.6".parse().unwrap());
-        headers.insert("User-Agent", "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)".parse().unwrap());
-        headers.insert("Host", "oauth.secure.pixiv.net".parse().unwrap());
+        headers.insert("app-os", "ios".parse().unwrap());
+        headers.insert("app-os-Version", "14.6".parse().unwrap());
+        headers.insert(header::USER_AGENT, "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)".parse().unwrap());
+        headers.insert(header::HOST, "oauth.secure.pixiv.net".parse().unwrap());
         
         let response: serde_json::Value = self.client.post("https://oauth.secure.pixiv.net/auth/token")
             .headers(headers)
@@ -374,7 +375,7 @@ impl PixivDownloadResource {
         };
 
         let mut headers = HeaderMap::with_capacity(1);
-        headers.append("Referer", "https://www.pixiv.net".parse().unwrap());
+        headers.append(header::REFERER, "https://www.pixiv.net".parse().unwrap());
 
         download::Builder::new(self.client.clone(), url, &dst)
             .headers(headers)
@@ -592,7 +593,7 @@ impl PixivResource {
     async fn download_video(&self) -> Result<Option<Vec<usize>>, PixivError> {
         let url = format!("https://www.pixiv.net/ajax/illust/{}/ugoira_meta", self.id);
         let mut headers = HeaderMap::with_capacity(1);
-        headers.append("Referer", "https://www.pixiv.net/".parse().unwrap());
+        headers.append(header::REFERER, "https://www.pixiv.net/".parse().unwrap());
 
         let video = self.client.get(url)
             .headers(headers.clone())
