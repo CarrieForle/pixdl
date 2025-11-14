@@ -166,6 +166,7 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
 
     if failed_resources.is_empty() {
         println!("{}", "All resources have been successfully downloaded!".green());
+        let _ = File::create(&input_file_path)?;
     } else if is_interactive {
         println!("{}", format!("Some resources are failed to download or skipped which remains in {:?}.", input_file_path.as_ref()).yellow());
 
