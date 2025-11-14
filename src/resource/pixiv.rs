@@ -436,45 +436,43 @@ impl PixivResource {
         let metadata = self.metadata.as_ref().unwrap();
 
         // if find "ugoira" in filename. Use a different download method.
-        if detail.pointer("/urls/original")
-            .ok_or(PixivError::JsonTraversal)?
+        let original_url = detail.pointer("/urls/original")
+            .ok_or(PixivError::JsonTraversal)?;
+        let is_require_account = original_url.is_null();
+
+        if !is_require_account && original_url
             .as_str()
             .ok_or(PixivError::JsonTraversal)?
             // The url is supposed to have the pattern:
             // https://i.pximg.net/img-original/img/{date}/{random}/{id}_ugoira0.{ext}
-            .contains("ugoira")
+            .contains("ugoira") 
         {
-                return self.download_video().await;
+            return self.download_video().await;
         }
 
-        let mut pictures = {
+        let mut pictures = if is_require_account {
+            let mut pixiv_user = PixivUser::init(self.client.clone()).await?;
+            pixiv_user.get_illust_urls(&self.id).await?
+        } else {
             let url = format!("https://www.pixiv.net/ajax/illust/{}/pages", self.id);
 
-            let response = self.client.get(url)
+            let response: serde_json::Value = self.client.get(url)
                 .header("Referer", "https://www.pixiv.net/")
                 .send().await?
-                .error_for_status();
+                .error_for_status()?
+                .json().await?;
 
-            match response {
-                Ok(res) => {
-                    let pages = res.json::<serde_json::Value>().await?;
-                    pages["body"].as_array()
+            response["body"].as_array()
+                .ok_or(PixivError::JsonTraversal)?
+                .iter()
+                .map(|v| { 
+                    Ok::<std::string::String, PixivError>(v.pointer("/urls/original")
                         .ok_or(PixivError::JsonTraversal)?
-                        .iter()
-                        .map(|v| { 
-                            Ok::<std::string::String, PixivError>(v.pointer("/urls/original")
-                                .ok_or(PixivError::JsonTraversal)?
-                                .as_str()
-                                .ok_or(PixivError::JsonTraversal)?
-                                .to_string())
-                        })
-                        .collect::<Result<_, _>>()?
-                }
-                Err(_) => {
-                    let mut pixivuser = PixivUser::init(self.client.clone()).await?;
-                    pixivuser.get_illust_urls(&self.id).await?
-                } 
-            }
+                        .as_str()
+                        .ok_or(PixivError::JsonTraversal)?
+                        .to_string())
+                })
+                .collect::<Result<_, _>>()?
         };
 
         // The parsing index starts from 1.
