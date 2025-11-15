@@ -327,15 +327,15 @@ impl PixivCredential {
 }
 
 
-// I'm seriously not sure if it's worth it to use Box<str>. But I
+// I'm seriously not sure if it's worth it to use String. But I
 // am not going to mutate any of these. It's wrong to mutate 
 // this data structure. It might make sense that some of these
 // are absense which in case I would make it Option instead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PixivMetadata {
-    pub artist: Box<str>,
-    pub title: Box<str>,
-    pub link: Box<str>,
+    pub artist: String,
+    pub title: String,
+    pub link: String,
 }
 
 #[derive(Debug)]
@@ -396,9 +396,9 @@ impl PixivDownloadResource {
 /// id is illustration id
 #[derive(Debug, Clone)]
 pub struct PixivResource {
-    pub(crate) origin: Box<str>,
+    pub(crate) origin: String,
     pub(crate) id: Arc<str>,
-    pub(crate) options: Vec<Box<str>>,
+    pub(crate) options: Vec<String>,
     pub(crate) client: Client,
     
     // This should be None when initialized since all the metadata
@@ -411,13 +411,7 @@ impl PixivResource {
         &self.origin
     }
 
-    /// Download a (group of) illustration subresourcees by ID.
-    /// Return Ok(None) if all subresources are successfully downloaded.
-    /// Return Ok(Some(Vec<_>)) if some subresources are failed to download. The Vec contains the failed subresources index. Note the index starts from 1.
-    /// Return PixivError if errors happened before it could start downloading any subresource.
-    /// 
-    /// Note invalid subresources denoted by options would not cause Ok(false).
-    pub async fn download(&mut self) -> Result<Option<Vec<usize>>, PixivError> {
+    pub async fn download(&mut self) -> super::Result<PixivError> {
         let detail = {
             let url = format!("https://www.pixiv.net/ajax/illust/{}", self.id);
             self.client.get(url)
@@ -429,14 +423,16 @@ impl PixivResource {
 
         let detail = &detail["body"];
         let title = detail["title"].as_str()
-            .ok_or(PixivError::JsonTraversal)?;
+            .ok_or(PixivError::JsonTraversal)?
+            .to_string();
         let artist = detail["userName"].as_str()
-            .ok_or(PixivError::JsonTraversal)?;
+            .ok_or(PixivError::JsonTraversal)?
+            .to_string();
 
         self.metadata = Some(PixivMetadata {
-            artist: Box::from(artist),
-            title: Box::from(title),
-            link: Box::from(format!("https://www.pixiv.net/artworks/{}", self.id)),
+            artist,
+            title,
+            link: format!("https://www.pixiv.net/artworks/{}", self.id),
         });
 
         let metadata = self.metadata.as_ref().unwrap();
@@ -483,7 +479,7 @@ impl PixivResource {
 
         // The parsing index starts from 1.
         // Need to convert to start from 0 for accessing resources.
-        let mut too_high_indexes = Vec::new();
+        let mut too_high_indexes: Vec<&str> = Vec::new();
         let download_indexes = if self.options.is_empty() {
             (0..pictures.len()).collect()
         } else {
@@ -522,7 +518,7 @@ impl PixivResource {
                     }
                     
                     if index > pictures.len() {
-                        too_high_indexes.push(option.deref());
+                        too_high_indexes.push(option);
                         continue;
                     }
                     
@@ -558,7 +554,6 @@ impl PixivResource {
 
             for i in download_indexes {
                 let url = mem::take(&mut pictures[i]);
-
                 let id = self.id.clone();
                 let pixiv_downloader = PixivDownloadResource::from(&*self);
                 let sender = sender.clone();

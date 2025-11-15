@@ -1,5 +1,5 @@
 use std::{fs::{self, File, remove_dir_all, remove_file}, io::{BufWriter, Write}, path::Path};
-use futures_util::StreamExt;
+use futures::StreamExt;
 use reqwest::{Client, Url, header::HeaderMap};
 
 #[derive(thiserror::Error, Debug)]
@@ -33,6 +33,7 @@ impl<'p> Builder<'p> {
         }
 
         let mut stream = request.send().await?
+            .error_for_status()?
             .bytes_stream();
 
         if let Some(parent) = self.dst.parent() {

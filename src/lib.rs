@@ -1,4 +1,5 @@
 use reqwest::Client;
+use thirtyfour::{DesiredCapabilities, WebDriver};
 use tokio::time::sleep;
 use std::env;
 use std::fs::File;
@@ -17,10 +18,10 @@ pub mod command_line;
 // Client is cloned throughout the codebase because it uses Arc
 // internally. Cloning does not allocate and is the intended way
 // to reuse Client.
-pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> anyhow::Result<Resources> {
+pub fn read_input_file<P: AsRef<Path>>(file_path: P) -> anyhow::Result<ParsedResources> {
     let file = GeneralOpen.open(file_path)?;
     let reader = io::BufReader::new(file);
-    let mut resources = Resources::default();
+    let mut resources = ParsedResources::default();
 
     for origin in reader.lines() {
         let origin = origin?;
@@ -28,7 +29,7 @@ pub fn read_input_file<P: AsRef<Path>>(file_path: P, client: Client) -> anyhow::
             continue;
         }
 
-        resources.push(Resource::parse(client.clone(), &origin)?);
+        resources.push(Resource::parse(&origin)?);
     }
 
     Ok(resources)
@@ -83,9 +84,9 @@ impl DefaultOpen for GeneralOpen {
     }
 }
 
-pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resources: Resources) -> anyhow::Result<()> {
+pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resources: ParsedResources) -> anyhow::Result<()> {
     let (resources, is_interactive) = if arg_resources.is_empty() {
-        let res = read_input_file(&input_file_path, client.clone())?;
+        let res = read_input_file(&input_file_path)?;
 
         if res.is_empty() {
             println!("No resources are loaded. Open {:?} and put in the resources!", input_file_path.as_ref());
@@ -106,6 +107,36 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
         println!("Loaded {} resources from command line arguments", arg_resources.len());
         (arg_resources, false)
     };
+
+    let driver = if resources.iter().any(|res| matches!(res, ParsedResource::Twitter(_))) {
+        // requires msedgedriver https://developer.microsoft.com/en-gb/microsoft-edge/tools/webdriver
+        // TODO: automation so the users do not 
+        // need to install edge, download 
+        // the driver, and launch the driver.
+        // the port is also different per launch.
+        let caps = DesiredCapabilities::edge();
+        let driver = WebDriver::new("http://localhost:5579", caps).await?;
+        Some(driver)
+    } else {
+        None
+    };
+
+    let resources: Vec<_> = resources.into_iter()
+        .map(|res| {
+            match res {
+                ParsedResource::Pixiv(p) => {
+                    Resource::Pixiv(p.to_pixiv(client.clone()))
+                }
+                ParsedResource::Twitter(t) => {
+                    let driver = driver.as_ref().unwrap().clone();
+                    Resource::Twitter(t.to_twitter(client.clone(), driver))
+                }
+                ParsedResource::Unknown(u) => {
+                    Resource::Unknown(u)
+                }
+            }
+        })
+        .collect();
 
     let mut failed_resources  = Vec::new();
     let (sender, mut receiver) = mpsc::channel(32);
@@ -153,6 +184,26 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
                 Resource::Unknown(unknown) => {
                     println!("[Unknown ({})] Skipped", unknown.origin);
                     sender.send(unknown.origin).await.unwrap();
+                }
+                Resource::Twitter(twitter) => {
+                    match twitter.download().await {  
+                        Ok(None) => {
+                            println!("Twitter success");
+                        }
+                        Ok(Some(failed_subresources)) => {
+                            let sub_id_sequence = failed_subresources.into_iter()
+                                .map(|v| v.to_string())
+                                .collect::<Box<[String]>>()
+                                .join(", ");
+
+                            println!("Twitter partly failed ({sub_id_sequence})");
+                            sender.send(twitter.origin).await.unwrap();
+                        }
+                        Err(err) => {
+                            println!("Twitter failed {err:#?}");
+                            sender.send(twitter.origin).await.unwrap();
+                        }
+                    }
                 }
             }
         });

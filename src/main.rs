@@ -1,8 +1,8 @@
 use std::time::Duration;
 use anyhow::Result;
+use clap::Parser;
 use pixdl::global::global;
-use pixdl::command_line;
-use pixdl::resource::Resources;
+use pixdl::command_line::Cli;
 use reqwest::ClientBuilder;
 
 #[tokio::main]
@@ -25,9 +25,8 @@ async fn main() -> Result<()> {
         .current_directory()
         .join(FILE_NAME);
 
-    let mut cli = command_line::populate(client.clone(), FILE_NAME);
-    let resources: Resources = cli.remove_one("resources").
-        unwrap_or_default();
+    let cli = Cli::parse();
+    let resources = cli.resources;
 
     pixdl::run(client, file_path, resources).await?;
 
