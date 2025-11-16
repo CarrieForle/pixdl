@@ -50,7 +50,7 @@ impl TwitterResource {
             .wait(Duration::from_secs(8), Duration::from_millis(500))
             .all_from_selector().await?;
         
-        println!("Found {} elements.", elems.len());
+        println!("DEBUG: Found {} elements.", elems.len());
 
         if elems.is_empty() {
             Err(TwitterError::NoImage)?
@@ -72,7 +72,7 @@ impl TwitterResource {
             let id = Arc::clone(&self.id);
             let client = self.client.clone();
 
-            let task = tokio::spawn( async move {
+            tasks.push_back(tokio::spawn( async move {
                 if let Err(e) = fetch_and_download(&elem, Arc::clone(&id), dst, client, Some(i)).await {
                     let context = format!("Failed to download Twitter (ID: {}, Index: {})", id, i + 1);
                     let error = anyhow::Error::from(e).context(context);
@@ -81,15 +81,15 @@ impl TwitterResource {
                 } else {
                     None
                 }
-            });
-
-            tasks.push_back(task);
+            }));
         }
 
         let failed_subresources: Vec<_> = tasks.collect::<Vec<_>>().await
             .into_iter()
             .filter_map(|res| res.unwrap())
             .collect();
+
+        self.driver.close_window().await?;
 
         if failed_subresources.is_empty() {
             Ok(None)

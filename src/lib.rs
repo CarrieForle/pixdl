@@ -1,10 +1,12 @@
-use reqwest::Client;
+use anyhow::Context;
+use reqwest::ClientBuilder;
 use thirtyfour::{DesiredCapabilities, WebDriver};
 use tokio::time::sleep;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, ErrorKind, Write, stdin};
 use std::path::Path;
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use tokio::sync::mpsc::{self};
 use colored::Colorize;
@@ -15,9 +17,13 @@ pub mod download;
 pub mod global;
 pub mod command_line;
 
-// Client is cloned throughout the codebase because it uses Arc
-// internally. Cloning does not allocate and is the intended way
-// to reuse Client.
+pub struct KillOnDropProcess(Child);
+impl Drop for KillOnDropProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+    }
+}
+
 pub fn read_input_file<P: AsRef<Path>>(file_path: P) -> anyhow::Result<ParsedResources> {
     let file = GeneralOpen.open(file_path)?;
     let reader = io::BufReader::new(file);
@@ -84,7 +90,7 @@ impl DefaultOpen for GeneralOpen {
     }
 }
 
-pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resources: ParsedResources) -> anyhow::Result<()> {
+pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResources) -> anyhow::Result<()> {
     let (resources, is_interactive) = if arg_resources.is_empty() {
         let res = read_input_file(&input_file_path)?;
 
@@ -108,44 +114,52 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
         (arg_resources, false)
     };
 
-    let driver = if resources.iter().any(|res| matches!(res, ParsedResource::Twitter(_))) {
-        // requires msedgedriver https://developer.microsoft.com/en-gb/microsoft-edge/tools/webdriver
-        // TODO: automation so the users do not 
-        // need to install edge, download 
-        // the driver, and launch the driver.
-        // the port is also different per launch.
-        let caps = DesiredCapabilities::edge();
-        let driver = WebDriver::new("http://localhost:5579", caps).await?;
-        Some(driver)
-    } else {
-        None
-    };
+    // TODO: Signal handle to cancel all ongoing downloads
+    // Client is cloned throughout the codebase because it uses Arc
+    // internally. Cloning does not allocate and is the intended way
+    // to reuse Client.
+    let client = ClientBuilder::new()
+        .gzip(true)
+        .connect_timeout(Duration::from_secs(3))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0")
+        .build()?;
 
-    let resources: Vec<_> = resources.into_iter()
-        .map(|res| {
-            match res {
-                ParsedResource::Pixiv(p) => {
-                    Resource::Pixiv(p.to_pixiv(client.clone()))
-                }
-                ParsedResource::Twitter(t) => {
-                    let driver = driver.as_ref().unwrap().clone();
-                    Resource::Twitter(t.to_twitter(client.clone(), driver))
-                }
-                ParsedResource::Unknown(u) => {
-                    Resource::Unknown(u)
-                }
+    let mut selenium = None;
+    let resources_ = resources;
+    let mut resources = Vec::new();
+    for res in resources_ {
+        resources.push(match res {
+            ParsedResource::Pixiv(p) => {
+                Resource::Pixiv(p.to_pixiv(client.clone()))
             }
-        })
-        .collect();
-
+            ParsedResource::Twitter(t) => {
+                if selenium.is_none() {
+                    selenium = Some(KillOnDropProcess(Command::new("./msedgedriver.exe")
+                        .arg("--port=4444")
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()
+                        .context("Selenium error")?));
+                }
+                    
+                let caps = DesiredCapabilities::edge();
+                let driver = WebDriver::new("http://localhost:4444", caps).await?;
+                driver.set_page_load_timeout(Duration::from_secs(10)).await?;
+                Resource::Twitter(t.to_twitter(client.clone(), driver))
+            }
+            ParsedResource::Unknown(u) => {
+                Resource::Unknown(u)
+            }
+        });
+    }
+    
     let mut failed_resources  = Vec::new();
     let (sender, mut receiver) = mpsc::channel(32);
-
+    
     for (i, res) in resources.into_iter().enumerate() {
         // Do we need this delay (429 error)?
         let delay = Duration::from_millis(i as u64 * 500);
         let sender = sender.clone();
-
         tokio::spawn(async move {
             sleep(delay).await;
             match res {
@@ -200,7 +214,7 @@ pub async fn run<P: AsRef<Path>>(client: Client, input_file_path: P, arg_resourc
                             sender.send(twitter.origin).await.unwrap();
                         }
                         Err(err) => {
-                            println!("Twitter failed {err:#?}");
+                            println!("Twitter failed {err:?}");
                             sender.send(twitter.origin).await.unwrap();
                         }
                     }
