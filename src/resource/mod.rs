@@ -2,7 +2,6 @@ use regex::Regex;
 use reqwest::Client;
 use anyhow::anyhow;
 use pixiv::{PixivResource, PixivError};
-use thirtyfour::WebDriver;
 use twitter::{TwitterResource, TwitterError};
 
 pub(super) mod pkce;
@@ -75,13 +74,12 @@ pub struct ParsedTwitterResource {
 }
 
 impl ParsedTwitterResource {
-    pub fn to_twitter(self, client: Client, driver: WebDriver) -> TwitterResource {
+    pub fn to_twitter(self, client: Client) -> TwitterResource {
         TwitterResource { 
             origin: self.origin,
             options: self.options, 
             url: self.url,
             id: self.id.into(),
-            driver,
             client
         }
     }

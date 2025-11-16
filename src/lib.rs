@@ -1,6 +1,5 @@
 use anyhow::Context;
 use reqwest::ClientBuilder;
-use thirtyfour::{DesiredCapabilities, WebDriver};
 use tokio::time::sleep;
 use std::env;
 use std::fs::File;
@@ -136,16 +135,15 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
                 if selenium.is_none() {
                     selenium = Some(KillOnDropProcess(Command::new("./msedgedriver.exe")
                         .arg("--port=4444")
+                        .arg("--silent")
+                        .arg("--headless")
                         .stdout(Stdio::null())
                         .stderr(Stdio::null())
                         .spawn()
                         .context("Selenium error")?));
                 }
-                    
-                let caps = DesiredCapabilities::edge();
-                let driver = WebDriver::new("http://localhost:4444", caps).await?;
-                driver.set_page_load_timeout(Duration::from_secs(10)).await?;
-                Resource::Twitter(t.to_twitter(client.clone(), driver))
+                
+                Resource::Twitter(t.to_twitter(client.clone()))
             }
             ParsedResource::Unknown(u) => {
                 Resource::Unknown(u)

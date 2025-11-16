@@ -1,7 +1,7 @@
 use std::{fs, io, path::PathBuf, sync::Arc, time::Duration};
 use futures::{StreamExt, stream::FuturesOrdered};
 use reqwest::{Client, Url};
-use thirtyfour::{By, WebDriver, WebElement, error::WebDriverError, prelude::ElementQueryable};
+use thirtyfour::{By, DesiredCapabilities, WebDriver, WebElement, error::WebDriverError, prelude::ElementQueryable};
 use thiserror;
 use colored::Colorize;
 
@@ -34,7 +34,6 @@ pub struct TwitterResource {
     pub url: String,
     pub id: Arc<str>,
     pub options: Vec<String>,
-    pub driver: WebDriver,
     pub client: Client,
 }
 
@@ -44,13 +43,15 @@ impl TwitterResource {
     }
 
     pub async fn download(&self) -> super::Result<TwitterError> {
-        self.driver.set_window_rect(0, 0, 300, 800).await?;
-        self.driver.goto(&self.origin).await?;
-        let elems = self.driver.query(By::Css(r#"img[src^="https://pbs.twimg.com/media/"]"#))
+        let caps = DesiredCapabilities::edge();
+        let driver = WebDriver::new("http://localhost:4444", caps).await?;
+        driver.set_page_load_timeout(Duration::from_secs(10)).await?;
+
+        driver.set_window_rect(0, 0, 300, 800).await?;
+        driver.goto(&self.origin).await?;
+        let elems = driver.query(By::Css(r#"img[src^="https://pbs.twimg.com/media/"]"#))
             .wait(Duration::from_secs(8), Duration::from_millis(500))
             .all_from_selector().await?;
-        
-        println!("DEBUG: Found {} elements.", elems.len());
 
         if elems.is_empty() {
             Err(TwitterError::NoImage)?
@@ -89,7 +90,7 @@ impl TwitterResource {
             .filter_map(|res| res.unwrap())
             .collect();
 
-        self.driver.close_window().await?;
+        driver.quit().await?;
 
         if failed_subresources.is_empty() {
             Ok(None)
