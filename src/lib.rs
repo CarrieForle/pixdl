@@ -173,9 +173,9 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, mut cli: Cli) -> anyhow::Re
                 Resource::Pixiv(mut pixiv) => {
                     match pixiv.download().await {
                         Err(e) => {
-                            println!("[Pixiv ({id})] {status}: {err}", 
+                            println!("[Pixiv ({id})] {status}{err}", 
                                 id=pixiv.id, 
-                                status="Failed".red(),
+                                status="Failed: ".red(),
                                 err=format!("{:#}", anyhow::Error::from(e)).red(),
                             );
                             
