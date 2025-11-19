@@ -244,7 +244,10 @@ impl PixivUser {
 
     /// request_builder do not have to be called with bearer_auth
     async fn retry_if_unauthorized(&mut self, request: Request) -> Result<Response, LoginError> {
-        let mut header_value: HeaderValue = format!("Bearer {}", self.credential.access_token).parse().unwrap();
+        let mut header_value: HeaderValue = format!("Bearer {}", self.credential.access_token)
+            .parse()
+            .unwrap();
+        
         header_value.set_sensitive(true);
         let mut first_request = request.try_clone().unwrap();
         first_request.headers_mut().insert(header::AUTHORIZATION, header_value);
@@ -260,7 +263,10 @@ impl PixivUser {
             Ok(val) => Ok(val),
             Err(_) => {
                 self.refresh_or_login().await?;
-                let mut header_value: HeaderValue = format!("Bearer {}", self.credential.access_token).parse().unwrap();
+                let mut header_value: HeaderValue = format!("Bearer {}", self.credential.access_token)
+                    .parse()
+                    .unwrap();
+
                 header_value.set_sensitive(true);
                 let mut second_request = request;
                 second_request.headers_mut().insert(header::AUTHORIZATION, header_value);
