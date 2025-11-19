@@ -534,7 +534,9 @@ impl PixivResource {
         }
 
         if pictures.len() <= 1 {
-            let url = &pictures[0];
+            let url = pictures.first()
+                .ok_or(PixivError::JsonTraversal)?;
+
             PixivDownloadResource::from(&*self).write_pic_link_to_disk(url, false).await?;
 
             Ok(None)
