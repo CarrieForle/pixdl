@@ -27,7 +27,13 @@ pub struct Cli {
     #[arg(required = false)]
     #[arg(default_value = "")]
     #[arg(hide_default_value = true)]
+    #[arg(help = "The resources to download")]
     pub resources: ParsedResources,
+
+    #[arg(long)]
+    #[arg(default_value_t = false)]
+    #[arg(help = "Start login process on startup")]
+    pub force_login: bool,
 }
 
 const DESCRIPTION: &str = r#"On startup, pixdl will find "write.txt" in the program directory. pixdl will create it if it couldn't find "write.txt". This is where you put resources to download.

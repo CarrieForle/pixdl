@@ -1,7 +1,7 @@
 use anyhow::Context;
 use reqwest::ClientBuilder;
 use tokio::time::sleep;
-use std::env;
+use std::{env, mem};
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, ErrorKind, Write, stdin};
 use std::path::Path;
@@ -9,6 +9,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use tokio::sync::mpsc::{self};
 use colored::Colorize;
+use crate::command_line::Cli;
+use crate::resource::pixiv::PixivUser;
 use crate::resource::*;
 
 pub mod resource;
@@ -89,7 +91,9 @@ impl DefaultOpen for GeneralOpen {
     }
 }
 
-pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResources) -> anyhow::Result<()> {
+pub async fn run<P: AsRef<Path>>(input_file_path: P, mut cli: Cli) -> anyhow::Result<()> {
+    let arg_resources = mem::take(&mut cli.resources);
+
     let (resources, is_interactive) = if arg_resources.is_empty() {
         let res = read_input_file(&input_file_path)?;
 
@@ -112,6 +116,7 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
         println!("Loaded {} resources from command line arguments", arg_resources.len());
         (arg_resources, false)
     };
+    println!();
 
     // TODO: Signal handle to cancel all ongoing downloads
     // Client is cloned throughout the codebase because it uses Arc
@@ -122,6 +127,10 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
         .connect_timeout(Duration::from_secs(3))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0")
         .build()?;
+
+    if cli.force_login {
+        let _ = PixivUser::login(client.clone()).await?;
+    }
 
     let mut selenium = None;
     let resources_ = resources;

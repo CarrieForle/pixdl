@@ -113,7 +113,7 @@ impl PixivUser {
     }
 
     /// Initialize PixivUser with interactive login.
-    async fn login(client: Client) -> Result<Self, LoginError> {
+    pub async fn login(client: Client) -> Result<Self, LoginError> {
         use anyhow::Error;
 
         let (code_verifier, code_challenge) = pkce::generate();
