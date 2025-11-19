@@ -164,8 +164,12 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
                 Resource::Pixiv(mut pixiv) => {
                     match pixiv.download().await {
                         Err(e) => {
-                            let context = format!("[Pixiv ({})] Failed", pixiv.id);
-                            println!("{}", format!("{:#}", anyhow::Error::from(e).context(context)).red());
+                            println!("[Pixiv ({id})] {status}: {err}", 
+                                id=pixiv.id, 
+                                status="Failed".red(),
+                                err=format!("{:#}", anyhow::Error::from(e)).red(),
+                            );
+                            
                             sender.send(pixiv.origin).await.unwrap();
                         }
                         Ok(Some(failed_subresources)) => {
@@ -181,6 +185,7 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
                                 sub_id=sub_id_sequence, 
                                 status="Failed".red()
                             );
+
                             sender.send(pixiv.origin).await.unwrap();
                         }
                         Ok(None) => {
@@ -200,7 +205,10 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
                 Resource::Twitter(twitter) => {
                     match twitter.download().await {  
                         Ok(None) => {
-                            println!("Twitter success");
+                            println!("[Twitter ({id})] {status}", 
+                                id=twitter.id, 
+                                status="Succeeded".green()
+                            );
                         }
                         Ok(Some(failed_subresources)) => {
                             let sub_id_sequence = failed_subresources.into_iter()
@@ -208,11 +216,21 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, arg_resources: ParsedResour
                                 .collect::<Box<[String]>>()
                                 .join(", ");
 
-                            println!("Twitter partly failed ({sub_id_sequence})");
+                            println!("[Twitter (ID: {id}, Sub ID: {sub_id})] {status}", 
+                                id=twitter.id, 
+                                sub_id=sub_id_sequence, 
+                                status="Failed".red()
+                            );
+
                             sender.send(twitter.origin).await.unwrap();
                         }
-                        Err(err) => {
-                            println!("Twitter failed {err:?}");
+                        Err(e) => {
+                            println!("[Twitter ({id})] {status}: {err}", 
+                                id=twitter.id, 
+                                status="Failed".red(),
+                                err=format!("{:#}", anyhow::Error::from(e)).red(),
+                            );
+
                             sender.send(twitter.origin).await.unwrap();
                         }
                     }
