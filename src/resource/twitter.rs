@@ -1,7 +1,7 @@
 use std::{fs, io, path::PathBuf, sync::Arc, time::Duration};
 use futures::{StreamExt, stream::FuturesOrdered};
 use reqwest::{Client, Url};
-use thirtyfour::{By, DesiredCapabilities, WebDriver, WebElement, error::WebDriverError, prelude::ElementQueryable};
+use thirtyfour::{By, ChromiumLikeCapabilities, DesiredCapabilities, WebDriver, WebElement, error::WebDriverError, prelude::ElementQueryable};
 use thiserror;
 use colored::Colorize;
 
@@ -43,7 +43,9 @@ impl TwitterResource {
     }
 
     pub async fn download(&self) -> super::Result<TwitterError> {
-        let caps = DesiredCapabilities::edge();
+        let mut caps = DesiredCapabilities::edge();
+        caps.set_headless()?;
+        caps.add_exclude_switch("--enable-logging")?;
         let driver = WebDriver::new("http://localhost:4444", caps).await?;
         driver.set_page_load_timeout(Duration::from_secs(10)).await?;
 
