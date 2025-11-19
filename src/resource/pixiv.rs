@@ -31,6 +31,9 @@ pub enum PixivError {
     #[error("Login failed")]
     Login(#[from] LoginError),
 
+    #[error("Account does not support downloading sensitive content. Retry by changing from account settings (Note toggling both sensitive content and R-18 is required for non R-18 sensitive content).")]
+    Restricted,
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -97,19 +100,35 @@ impl PixivUser {
             self.retry_if_unauthorized(request).await?.json().await?
         };
 
-        detail.pointer("/illust/meta_pages")
-            .ok_or(PixivError::JsonTraversal)?
-            .as_array()
-            .ok_or(PixivError::JsonTraversal)?
-            .iter()
-            .map(|v| { 
-                Ok(v.pointer("/image_urls/original")
+        let pictures = match detail.pointer("/illust/meta_single_page/original_image_url") {
+            Some(url) => {
+                let url = url.as_str()
                     .ok_or(PixivError::JsonTraversal)?
-                    .as_str()
+                    .to_string();
+                vec![url]
+            }
+            None => {
+                detail.pointer("/illust/meta_pages")
                     .ok_or(PixivError::JsonTraversal)?
-                    .to_string())
-            })
-            .collect::<Result<Vec<String>, _>>()
+                    .as_array()
+                    .ok_or(PixivError::JsonTraversal)?
+                    .iter()
+                    .map(|v| { 
+                        Ok(v.pointer("/image_urls/original")
+                            .ok_or(PixivError::JsonTraversal)?
+                            .as_str()
+                            .ok_or(PixivError::JsonTraversal)?
+                            .to_string())
+                    })
+                    .collect::<Result<Vec<String>, PixivError>>()?
+            }
+        };
+
+        if pictures.is_empty() {
+            Err(PixivError::Restricted)?
+        }
+
+        Ok(pictures)
     }
 
     /// Initialize PixivUser with interactive login.
