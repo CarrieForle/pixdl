@@ -66,7 +66,7 @@ impl TwitterResource {
             return Ok(None);
         }
 
-        fs::create_dir_all(&*self.id)?;
+        fs::create_dir_all(format!("twitter-{}", self.id))?;
         let dst = PathBuf::from(&*self.id);
         let mut tasks = FuturesOrdered::new();
 
