@@ -1,7 +1,7 @@
 use anyhow::Context;
 use reqwest::ClientBuilder;
 use tokio::time::sleep;
-use std::{env, mem};
+use std::mem;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, ErrorKind, Write, stdin};
 use std::path::Path;
@@ -10,6 +10,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::{self};
 use colored::Colorize;
 use crate::command_line::Cli;
+use crate::global::Global;
 use crate::resource::pixiv::PixivUser;
 use crate::resource::*;
 
@@ -91,7 +92,7 @@ impl DefaultOpen for GeneralOpen {
     }
 }
 
-pub async fn run<P: AsRef<Path>>(input_file_path: P, mut cli: Cli) -> anyhow::Result<()> {
+pub async fn run<P: AsRef<Path>>(input_file_path: P, mut cli: Cli, global: &Global) -> anyhow::Result<()> {
     let arg_resources = mem::take(&mut cli.resources);
 
     let (resources, is_interactive) = if arg_resources.is_empty() {
@@ -100,12 +101,7 @@ pub async fn run<P: AsRef<Path>>(input_file_path: P, mut cli: Cli) -> anyhow::Re
         if res.is_empty() {
             println!("No resources are loaded. Open {:?} and put in the resources!", input_file_path.as_ref());
 
-            let current_exe = env::current_exe()?;
-            let binary_name = current_exe.file_name()
-                .map(|f| f.to_str().unwrap_or("pxdlp"))
-                .unwrap();
-
-            println!("See program usage with \"{} -h\".", binary_name);
+            println!("See program usage with \"{} -h\".", global.executable_name());
 
             return Ok(());
         }

@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    pixdl::run(file_path, cli).await?;
+    pixdl::run(file_path, cli, &global).await?;
 
     Ok(())
 }
