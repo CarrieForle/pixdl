@@ -9,6 +9,10 @@ fn parser(arg: &str) -> anyhow::Result<ParsedResources> {
     let input_res = arg.split(',');
     let mut resources = ParsedResources::new();
     for res in input_res {
+        if res.trim().is_empty() {
+            continue;
+        }
+        
         println!("{res}");
         match Resource::parse(res)  {
             Ok(res) => resources.push(res),
